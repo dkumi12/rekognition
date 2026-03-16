@@ -1,0 +1,27 @@
+# --- Terraform Specifics ---
+# Local terraform state (VERY important to ignore if not using a remote backend)
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+.terraform/
+
+# --- AWS & Environment ---
+# Never commit your AWS credentials or local environment variables
+.aws/
+.env
+.env.local
+
+# --- Docker & OS ---
+# Ignore local Docker build artifacts and system files
+.docker/
+Thumbs.db
+.DS_Store
+
+# --- Python / Lambda ---
+# If you test locally, ignore these
+__pycache__/
+*.py[cod]
+*$py.class
+dist/
+build/
+*.zip
