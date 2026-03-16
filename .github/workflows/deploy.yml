@@ -64,3 +64,20 @@ jobs:
           # Upload all frontend files (index.html, script.js, style.css) to S3
           # Using --delete ensures old files are removed
           aws s3 sync . s3://$BUCKET_NAME --exclude "*" --include "index.html" --include "script.js" --include "style.css" --delete
+
+# Step 4: Automate Frontend - URL Injection & S3 Sync
+      - name: Inject API URL and Deploy to S3
+        run: |
+          # 1. Capture the new API URL from Terraform output
+          REAL_URL=$(terraform output -raw api_endpoint)
+          
+          # 2. Inject the URL into script.js inside the 'website' folder
+          # This swaps 'REPLACE_ME_API_URL' for the actual live endpoint
+          sed -i "s|REPLACE_ME_API_URL|$REAL_URL|g" website/script.js
+          
+          # 3. Get the dynamically generated bucket name
+          BUCKET_NAME=$(terraform output -raw website_bucket_name)
+          
+          # 4. Upload the contents of the 'website' folder to S3
+          # We sync from './website' so the files land in the root of the bucket
+          aws s3 sync ./website s3://$BUCKET_NAME --delete
