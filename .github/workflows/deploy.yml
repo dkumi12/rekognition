@@ -1,18 +1,41 @@
-# 1. Initialize Terraform
+name: Deploy Rekognition Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
       - name: Terraform Init
         run: terraform init
 
-      # 2. BOOTSTRAP: Only create the ECR repository first
+      # Step 1: Bootstrap the ECR Repository
       - name: Terraform Target ECR
         run: terraform apply -target=aws_ecr_repository.rekognition_repo -auto-approve
 
-      # 3. Login to ECR (Now that it exists)
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4. Build and Push (The warehouse is ready!)
-      - name: Build, Tag, and Push Image
+      # Step 2: Build and Push Docker Image
+      - name: Build and Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: group3-rekognition-repo
@@ -21,6 +44,23 @@
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # 5. COMPLETE: Apply everything else (S3, Lambda, API)
+      # Step 3: Deploy the rest of the Cloud Infrastructure
       - name: Terraform Apply Full
         run: terraform apply -auto-approve
+
+      # Step 4: Automate Frontend - URL Injection & S3 Sync
+      - name: Inject API URL and Deploy to S3
+        run: |
+          # Capture the new API URL from Terraform output
+          REAL_URL=$(terraform output -raw api_endpoint)
+          
+          # Inject the URL into script.js (Assumes your files are in the root or a 'frontend' folder)
+          # We use 'sed' to swap the placeholder for the real live URL
+          sed -i "s|REPLACE_ME_API_URL|$REAL_URL|g" script.js
+          
+          # Get the dynamically generated bucket name
+          BUCKET_NAME=$(terraform output -raw website_bucket_name)
+          
+          # Upload all frontend files (index.html, script.js, style.css) to S3
+          # Using --delete ensures old files are removed
+          aws s3 sync . s3://$BUCKET_NAME --exclude "*" --include "index.html" --include "script.js" --include "style.css" --delete

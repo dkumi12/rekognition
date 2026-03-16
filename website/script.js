@@ -1,4 +1,4 @@
-const API_ENDPOINT = "https://82ijv81off.execute-api.us-east-1.amazonaws.com/prod/analyze";
+const API_ENDPOINT = "REPLACE_ME_API_URL";
 
 const imageInput = document.getElementById('imageInput');
 const uploadBtn = document.getElementById('uploadBtn');
