@@ -12,7 +12,6 @@ def lambda_handler(event, context):
         image_bytes = None
         s3_info = None
 
-        # CASE 1: S3 Trigger (Manual Pipeline)
         if 'Records' in event:
             bucket = event['Records'][0]['s3']['bucket']['name']
             key = event['Records'][0]['s3']['object']['key']
@@ -21,7 +20,6 @@ def lambda_handler(event, context):
             response = s3.get_object(Bucket=bucket, Key=key)
             image_bytes = response['Body'].read()
 
-        # CASE 2: API Gateway Trigger (Frontend)
         elif 'body' in event:
             print("DEBUG: API Gateway Trigger detected.")
             body = json.loads(event['body'])
@@ -30,7 +28,6 @@ def lambda_handler(event, context):
         if not image_bytes:
             raise Exception("No image data found.")
 
-        # Analysis Logic
         labels = rekognition.detect_labels(Image={'Bytes': image_bytes})
         faces = rekognition.detect_faces(Image={'Bytes': image_bytes}, Attributes=['ALL'])
         
@@ -40,7 +37,6 @@ def lambda_handler(event, context):
             "emotions": faces['FaceDetails'][0]['Emotions'] if faces['FaceDetails'] else []
         }
 
-        # Manual Pipeline Output
         if s3_info:
             output_bucket = os.environ.get('OUTPUT_BUCKET')
             print(f"DEBUG: Saving JSON to {output_bucket}")
