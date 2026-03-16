@@ -7,6 +7,7 @@ rekognition = boto3.client('rekognition')
 s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
+    print(f"DEBUG: Received event: {json.dumps(event)}")
     try:
         image_bytes = None
         s3_info = None
@@ -15,21 +16,22 @@ def lambda_handler(event, context):
         if 'Records' in event:
             bucket = event['Records'][0]['s3']['bucket']['name']
             key = event['Records'][0]['s3']['object']['key']
+            print(f"DEBUG: S3 Trigger detected. Bucket: {bucket}, Key: {key}")
             s3_info = {"bucket": bucket, "key": key}
             
-            # Get the image bytes from the S3 object
             response = s3.get_object(Bucket=bucket, Key=key)
             image_bytes = response['Body'].read()
 
         # --- CASE 2: API Gateway Trigger (Frontend) ---
         elif 'body' in event:
+            print("DEBUG: API Gateway Trigger detected.")
             body = json.loads(event['body'])
             image_bytes = base64.b64decode(body['image_data'])
 
         if not image_bytes:
-            raise Exception("No image data found in event")
+            raise Exception("No image data found in event structure.")
 
-        # --- COMMON ANALYSIS LOGIC ---
+        # --- ANALYSIS ---
         labels = rekognition.detect_labels(Image={'Bytes': image_bytes})
         faces = rekognition.detect_faces(Image={'Bytes': image_bytes}, Attributes=['ALL'])
         
@@ -39,20 +41,19 @@ def lambda_handler(event, context):
             "emotions": faces['FaceDetails'][0]['Emotions'] if faces['FaceDetails'] else []
         }
 
-        # --- CASE 1 OUTPUT: Save JSON to S3 if it was a manual upload ---
+        # --- OUTPUT LOGIC ---
         if s3_info:
             output_bucket = os.environ.get('OUTPUT_BUCKET')
-            if output_bucket:
-                output_key = f"analysis-{s3_info['key']}.json"
-                s3.put_object(
-                    Bucket=output_bucket,
-                    Key=output_key,
-                    Body=json.dumps(result_data),
-                    ContentType='application/json'
-                )
-            return {"status": "S3 Analysis Complete"}
+            print(f"DEBUG: Writing analysis to output bucket: {output_bucket}")
+            output_key = f"analysis-{s3_info['key']}.json"
+            s3.put_object(
+                Bucket=output_bucket,
+                Key=output_key,
+                Body=json.dumps(result_data),
+                ContentType='application/json'
+            )
+            return {"status": "Manual S3 Analysis Complete"}
 
-        # --- CASE 2 OUTPUT: Return JSON to Frontend ---
         return {
             "statusCode": 200,
             "headers": {
@@ -63,7 +64,7 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        print(f"Error: {str(e)}") # Visible in CloudWatch logs
+        print(f"ERROR: {str(e)}")
         return {
             "statusCode": 500,
             "headers": { "Access-Control-Allow-Origin": "*" },
