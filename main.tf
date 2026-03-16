@@ -6,17 +6,16 @@ terraform {
   }
 }
 
-# --- 1. PROVISION THE ECR REPOSITORY ---
+# --- 1. ECR REPOSITORY ---
 resource "aws_ecr_repository" "rekognition_repo" {
   name                 = "group3-rekognition-repo"
   image_tag_mutability = "MUTABLE"
   force_delete         = true 
 }
 
-# --- 2. SECURITY ROLES (IAM) ---
+# --- 2. IAM ROLES ---
 resource "aws_iam_role" "lambda_exec_role" {
   name = "group3_rekognition_lambda_role"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -87,7 +86,7 @@ resource "aws_s3_bucket_policy" "public_read" {
   depends_on = [aws_s3_bucket_public_access_block.web_access]
 }
 
-# --- 4. COMPUTE (LAMBDA) ---
+# --- 4. LAMBDA FUNCTION ---
 resource "aws_lambda_function" "rekognition_processor" {
   function_name = "group3_image_processor"
   role          = aws_iam_role.lambda_exec_role.arn
@@ -99,12 +98,11 @@ resource "aws_lambda_function" "rekognition_processor" {
       OUTPUT_BUCKET = aws_s3_bucket.analysis_outputs.id
     }
   }
-
   timeout     = 60
   memory_size = 512
 }
 
-# S3 TRIGGER LOGIC (FIXED ORDER)
+# S3 Trigger Order Fix
 resource "aws_lambda_permission" "allow_s3_bucket" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
@@ -115,7 +113,6 @@ resource "aws_lambda_permission" "allow_s3_bucket" {
 
 resource "aws_s3_bucket_notification" "bucket_notification" {
   bucket = aws_s3_bucket.image_inputs.id
-
   lambda_function {
     lambda_function_arn = aws_lambda_function.rekognition_processor.arn
     events              = ["s3:ObjectCreated:*"]
@@ -152,13 +149,21 @@ resource "aws_api_gateway_integration" "lambda_integration" {
 
 resource "aws_api_gateway_deployment" "api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.rekognition_api.id
-  depends_on  = [aws_api_gateway_integration.lambda_integration]
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.analyze.id,
+      aws_api_gateway_method.post_method.id,
+      aws_api_gateway_integration.lambda_integration.id
+    ]))
+  }
+  lifecycle { create_before_destroy = true } # Fixes deployment lock
 }
 
 resource "aws_api_gateway_stage" "api_stage" {
   deployment_id = aws_api_gateway_deployment.api_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
   stage_name    = "prod"
+  lifecycle { create_before_destroy = true } # Fixes stage lock
 }
 
 resource "aws_lambda_permission" "apigw_lambda" {
