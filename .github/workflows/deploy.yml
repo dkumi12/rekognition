@@ -26,7 +26,7 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # Step 1: Bootstrap the ECR Repository
+      # Step 1: Bootstrap ECR
       - name: Terraform Target ECR
         run: terraform apply -target=aws_ecr_repository.rekognition_repo -auto-approve
 
@@ -44,40 +44,21 @@ jobs:
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # Step 3: Deploy the rest of the Cloud Infrastructure
+      # Step 3: Deploy Full Infrastructure
       - name: Terraform Apply Full
         run: terraform apply -auto-approve
 
-      # Step 4: Automate Frontend - URL Injection & S3 Sync
+      # Step 4: Final Frontend Automation
       - name: Inject API URL and Deploy to S3
         run: |
-          # Capture the new API URL from Terraform output
+          # Capture the API URL from Terraform
           REAL_URL=$(terraform output -raw api_endpoint)
           
-          # Inject the URL into script.js (Assumes your files are in the root or a 'frontend' folder)
-          # We use 'sed' to swap the placeholder for the real live URL
-          sed -i "s|REPLACE_ME_API_URL|$REAL_URL|g" script.js
-          
-          # Get the dynamically generated bucket name
-          BUCKET_NAME=$(terraform output -raw website_bucket_name)
-          
-          # Upload all frontend files (index.html, script.js, style.css) to S3
-          # Using --delete ensures old files are removed
-          aws s3 sync . s3://$BUCKET_NAME --exclude "*" --include "index.html" --include "script.js" --include "style.css" --delete
-
-# Step 4: Automate Frontend - URL Injection & S3 Sync
-      - name: Inject API URL and Deploy to S3
-        run: |
-          # 1. Capture the new API URL from Terraform output
-          REAL_URL=$(terraform output -raw api_endpoint)
-          
-          # 2. Inject the URL into script.js inside the 'website' folder
-          # This swaps 'REPLACE_ME_API_URL' for the actual live endpoint
+          # Inject URL into the correct directory: website/script.js
           sed -i "s|REPLACE_ME_API_URL|$REAL_URL|g" website/script.js
           
-          # 3. Get the dynamically generated bucket name
+          # Get the dynamically generated website bucket name
           BUCKET_NAME=$(terraform output -raw website_bucket_name)
           
-          # 4. Upload the contents of the 'website' folder to S3
-          # We sync from './website' so the files land in the root of the bucket
+          # Sync from the 'website' folder directly to the root of the S3 bucket
           aws s3 sync ./website s3://$BUCKET_NAME --delete

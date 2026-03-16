@@ -256,3 +256,15 @@ output "api_endpoint" {
   description = "The API Gateway URL to paste into your script.js"
   value       = "${aws_api_gateway_stage.api_stage.invoke_url}/analyze"
 }
+
+# --- ADD THIS TO THE BOTTOM OF YOUR main.tf ---
+
+output "website_bucket_name" {
+  description = "The name of the S3 bucket hosting the website"
+  value       = aws_s3_bucket.web_ui.id
+}
+
+output "api_endpoint" {
+  description = "The API Gateway URL to paste into your script.js"
+  value       = "${aws_api_gateway_stage.api_stage.invoke_url}/analyze"
+}
