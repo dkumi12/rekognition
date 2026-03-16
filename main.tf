@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "group3-terraform-state-unique-id" # The bucket you just created
+    key    = "state/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 # --- 1. Provision the ECR Repository ---
 resource "aws_ecr_repository" "rekognition_repo" {
   name                 = "group3-rekognition-repo"
