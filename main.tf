@@ -95,28 +95,29 @@ resource "aws_lambda_function" "rekognition_processor" {
 
   environment {
     variables = {
-      OUTPUT_BUCKET = aws_s3_bucket.analysis_outputs.id
+      OUTPUT_BUCKET = aws_s3_bucket.analysis_outputs.id #
     }
   }
   timeout     = 60
   memory_size = 512
 }
 
+# MANUAL PIPELINE TRIGGER
 resource "aws_lambda_permission" "allow_s3_bucket" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.rekognition_processor.function_name
   principal     = "s3.amazonaws.com"
-  source_arn    = aws_s3_bucket.image_inputs.arn
+  source_arn    = aws_s3_bucket.image_inputs.arn #
 }
 
 resource "aws_s3_bucket_notification" "bucket_notification" {
   bucket = aws_s3_bucket.image_inputs.id
   lambda_function {
     lambda_function_arn = aws_lambda_function.rekognition_processor.arn
-    events              = ["s3:ObjectCreated:*"]
+    events              = ["s3:ObjectCreated:*"] #
   }
-  depends_on = [aws_lambda_permission.allow_s3_bucket]
+  depends_on = [aws_lambda_permission.allow_s3_bucket] #
 }
 
 # --- 5. API GATEWAY ---
@@ -130,7 +131,7 @@ resource "aws_api_gateway_resource" "analyze" {
   path_part   = "analyze"
 }
 
-# POST Method (Actual Request)
+# POST Method
 resource "aws_api_gateway_method" "post_method" {
   rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
   resource_id   = aws_api_gateway_resource.analyze.id
@@ -147,7 +148,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   uri                     = aws_lambda_function.rekognition_processor.invoke_arn
 }
 
-# --- PERMANENT CORS FIX (OPTIONS METHOD) ---
+# PERMANENT CORS FIX (OPTIONS METHOD)
 resource "aws_api_gateway_method" "options_method" {
   rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
   resource_id   = aws_api_gateway_resource.analyze.id
@@ -190,7 +191,7 @@ resource "aws_api_gateway_integration_response" "options_integration_response" {
   depends_on = [aws_api_gateway_integration.options_integration]
 }
 
-# --- DEPLOYMENT & STAGE ---
+# DEPLOYMENT & STAGE (With Lifecycle Fix)
 resource "aws_api_gateway_deployment" "api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.rekognition_api.id
   triggers = {
@@ -202,7 +203,7 @@ resource "aws_api_gateway_deployment" "api_deployment" {
       aws_api_gateway_integration.options_integration.id
     ]))
   }
-  lifecycle { create_before_destroy = true }
+  lifecycle { create_before_destroy = true } #
   depends_on = [
     aws_api_gateway_integration.lambda_integration,
     aws_api_gateway_integration.options_integration
@@ -213,7 +214,7 @@ resource "aws_api_gateway_stage" "api_stage" {
   deployment_id = aws_api_gateway_deployment.api_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
   stage_name    = "prod"
-  lifecycle { create_before_destroy = true }
+  lifecycle { create_before_destroy = true } #
 }
 
 resource "aws_lambda_permission" "apigw_lambda" {

@@ -26,8 +26,8 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # Step 1: Create the ECR Repository only
-      # This ensures the 'house' is built before we move the 'image' in
+      # Step 1: Create only the ECR Repository 
+      # This prevents the 'Image does not exist' error during Lambda creation 
       - name: Terraform Target ECR
         run: terraform apply -target=aws_ecr_repository.rekognition_repo -auto-approve
 
@@ -35,8 +35,8 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 2: Build and Push Docker Image
-      # platform linux/amd64 is REQUIRED for AWS Lambda functions
+      # Step 2: Build and Push Docker Image 
+      # Using --platform linux/amd64 is critical for AWS Lambda 
       - name: Build and Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -46,22 +46,21 @@ jobs:
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # Step 3: Deploy Full Infrastructure (Lambda, API Gateway, S3)
-      # Now that the image exists in ECR, the Lambda creation will succeed
+      # Step 3: Deploy Full Infrastructure (Lambda, API Gateway, S3) 
       - name: Terraform Apply Full
         run: terraform apply -auto-approve
 
-      # Step 4: Final Frontend Automation
+      # Step 4: Final Frontend Automation 
       - name: Inject API URL and Deploy to S3
         run: |
-          # Capture the API URL from Terraform output
+          # Retrieve the API URL dynamically from Terraform outputs 
           REAL_URL=$(terraform output -raw api_endpoint)
           
-          # Inject URL into the correct directory: website/script.js
+          # Inject the URL into your frontend script 
           sed -i "s|REPLACE_ME_API_URL|$REAL_URL|g" website/script.js
           
-          # Get the dynamically generated website bucket name
+          # Get the dynamically generated website bucket name 
           BUCKET_NAME=$(terraform output -raw website_bucket_name)
           
-          # Sync from the 'website' folder directly to the root of the S3 bucket
+          # Deploy frontend files to the S3 Website bucket 
           aws s3 sync ./website s3://$BUCKET_NAME --delete
