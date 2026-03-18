@@ -26,8 +26,7 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # Step 1: Create only the ECR Repository 
-      # This prevents the 'Image does not exist' error during Lambda creation 
+      # Step 1: Bootstrap the Repository
       - name: Terraform Target ECR
         run: terraform apply -target=aws_ecr_repository.rekognition_repo -auto-approve
 
@@ -35,8 +34,7 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 2: Build and Push Docker Image 
-      # Using --platform linux/amd64 is critical for AWS Lambda 
+      # Step 2: Push the AI Model
       - name: Build and Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -46,21 +44,14 @@ jobs:
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # Step 3: Deploy Full Infrastructure (Lambda, API Gateway, S3) 
+      # Step 3: Complete Infrastructure
       - name: Terraform Apply Full
         run: terraform apply -auto-approve
 
-      # Step 4: Final Frontend Automation 
+      # Step 4: Inject API and Sync Frontend
       - name: Inject API URL and Deploy to S3
         run: |
-          # Retrieve the API URL dynamically from Terraform outputs 
           REAL_URL=$(terraform output -raw api_endpoint)
-          
-          # Inject the URL into your frontend script 
           sed -i "s|REPLACE_ME_API_URL|$REAL_URL|g" website/script.js
-          
-          # Get the dynamically generated website bucket name 
           BUCKET_NAME=$(terraform output -raw website_bucket_name)
-          
-          # Deploy frontend files to the S3 Website bucket 
           aws s3 sync ./website s3://$BUCKET_NAME --delete
