@@ -102,7 +102,6 @@ resource "aws_lambda_function" "rekognition_processor" {
   memory_size = 512
 }
 
-# S3 Trigger Order Fix
 resource "aws_lambda_permission" "allow_s3_bucket" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
@@ -131,6 +130,7 @@ resource "aws_api_gateway_resource" "analyze" {
   path_part   = "analyze"
 }
 
+# POST Method (Actual Request)
 resource "aws_api_gateway_method" "post_method" {
   rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
   resource_id   = aws_api_gateway_resource.analyze.id
@@ -147,23 +147,73 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   uri                     = aws_lambda_function.rekognition_processor.invoke_arn
 }
 
+# --- PERMANENT CORS FIX (OPTIONS METHOD) ---
+resource "aws_api_gateway_method" "options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
+  resource_id   = aws_api_gateway_resource.analyze.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.rekognition_api.id
+  resource_id = aws_api_gateway_resource.analyze.id
+  http_method = aws_api_gateway_method.options_method.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_200" {
+  rest_api_id = aws_api_gateway_rest_api.rekognition_api.id
+  resource_id = aws_api_gateway_resource.analyze.id
+  http_method = aws_api_gateway_method.options_method.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.rekognition_api.id
+  resource_id = aws_api_gateway_resource.analyze.id
+  http_method = aws_api_gateway_method.options_method.http_method
+  status_code = aws_api_gateway_method_response.options_200.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'",
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  depends_on = [aws_api_gateway_integration.options_integration]
+}
+
+# --- DEPLOYMENT & STAGE ---
 resource "aws_api_gateway_deployment" "api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.rekognition_api.id
   triggers = {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.analyze.id,
       aws_api_gateway_method.post_method.id,
-      aws_api_gateway_integration.lambda_integration.id
+      aws_api_gateway_integration.lambda_integration.id,
+      aws_api_gateway_method.options_method.id,
+      aws_api_gateway_integration.options_integration.id
     ]))
   }
-  lifecycle { create_before_destroy = true } # Fixes deployment lock
+  lifecycle { create_before_destroy = true }
+  depends_on = [
+    aws_api_gateway_integration.lambda_integration,
+    aws_api_gateway_integration.options_integration
+  ]
 }
 
 resource "aws_api_gateway_stage" "api_stage" {
   deployment_id = aws_api_gateway_deployment.api_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.rekognition_api.id
   stage_name    = "prod"
-  lifecycle { create_before_destroy = true } # Fixes stage lock
+  lifecycle { create_before_destroy = true }
 }
 
 resource "aws_lambda_permission" "apigw_lambda" {

@@ -26,7 +26,8 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # Step 1: Bootstrap ECR
+      # Step 1: Create the ECR Repository only
+      # This ensures the 'house' is built before we move the 'image' in
       - name: Terraform Target ECR
         run: terraform apply -target=aws_ecr_repository.rekognition_repo -auto-approve
 
@@ -35,6 +36,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       # Step 2: Build and Push Docker Image
+      # platform linux/amd64 is REQUIRED for AWS Lambda functions
       - name: Build and Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -44,14 +46,15 @@ jobs:
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # Step 3: Deploy Full Infrastructure
+      # Step 3: Deploy Full Infrastructure (Lambda, API Gateway, S3)
+      # Now that the image exists in ECR, the Lambda creation will succeed
       - name: Terraform Apply Full
         run: terraform apply -auto-approve
 
       # Step 4: Final Frontend Automation
       - name: Inject API URL and Deploy to S3
         run: |
-          # Capture the API URL from Terraform
+          # Capture the API URL from Terraform output
           REAL_URL=$(terraform output -raw api_endpoint)
           
           # Inject URL into the correct directory: website/script.js
